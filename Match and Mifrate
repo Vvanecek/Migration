@@ -1,0 +1,51 @@
+
+#Připojení PnP Online k tenantu (změn yourtenant. na svůj tenant (kopiie URL ze site kde použiješ ))
+Connect-PnPOnline -Url "https://yourtenant.sharepoint.com/sites/yoursite" -UseWebLogin
+
+#
+$localFolderPath = "C:\path\to\your\folder"
+$sharePointFolderPath = "/Shared Documents/your/folder"
+
+function CompareAndMigrate ($localPath, $sharePointPath) {
+    $localFiles = Get-ChildItem $localPath -File
+    $sharePointFiles = Get-PnPFolderItem -FolderSiteRelativeUrl $sharePointPath -ItemType File
+
+    foreach ($localFile in $localFiles) {
+        $found = $false
+
+        foreach ($sharePointFile in $sharePointFiles) {
+            if ($localFile.Name -eq $sharePointFile.Name) {
+                $found = $true
+                break
+            }
+        }
+
+        if (-not $found) {
+            Write-Host "Migrating missing file: $($localFile.FullName)"
+            Add-PnPFile -Path $localFile.FullName -Folder $sharePointPath
+        }
+    }
+
+    $localFolders = Get-ChildItem $localPath -Directory
+    $sharePointFolders = Get-PnPFolderItem -FolderSiteRelativeUrl $sharePointPath -ItemType Folder
+
+    foreach ($localFolder in $localFolders) {
+        $found = $false
+
+        foreach ($sharePointFolder in $sharePointFolders) {
+            if ($localFolder.Name -eq $sharePointFolder.Name) {
+                $found = $true
+                break
+            }
+        }
+
+        if (-not $found) {
+            Write-Host "Creating missing folder: $($localFolder.Name)"
+            Add-PnPFolder -Name $localFolder.Name -Folder $sharePointPath
+        }
+
+        CompareAndMigrate ($localFolder.FullName) ($sharePointPath + "/" + $localFolder.Name)
+    }
+}
+
+CompareAndMigrate $localFolderPath $sharePointFolderPath
