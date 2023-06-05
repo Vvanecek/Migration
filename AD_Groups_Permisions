@@ -1,0 +1,53 @@
+# import Active Directory modulu
+Import-Module ActiveDirectory
+
+# definujeme cestu k složkám
+$FolderPath = 'C:\YourFolderPath'
+
+# cesta k OU
+$OUPath = "OU=YourOU,DC=domain,DC=com"
+
+# uživatel, který bude řídit skupiny
+$ManagedByUser = "název_mng_groupy"
+
+# získáme objekt uživatele pro ManagedBy
+$ManagedByUserObj = Get-ADUser -Identity $ManagedByUser
+
+# procházíme všechny složky
+Get-ChildItem -Path $FolderPath -Directory | ForEach-Object {
+    # vytvoříme názvy skupin
+    $groupNameRead = "$($_.Name)_R"
+    $groupNameWrite = "$($_.Name)_W"
+
+    # zkontrolujeme, zda skupina už existuje
+    $groupExistsRead = Get-ADGroup -Filter { Name -eq $groupNameRead }
+    $groupExistsWrite = Get-ADGroup -Filter { Name -eq $groupNameWrite }
+
+    # pokud neexistuje, vytvoříme novou skupinu
+    if ($null -eq $groupExistsRead) {
+        $groupExistsRead = New-ADGroup -Name $groupNameRead -GroupScope Global -Path $OUPath -ManagedBy $ManagedByUserObj
+        Write-Output "Group '$groupNameRead' was created."
+    } else {
+        Write-Output "Group '$groupNameRead' already exists."
+    }
+
+    if ($null -eq $groupExistsWrite) {
+        $groupExistsWrite = New-ADGroup -Name $groupNameWrite -GroupScope Global -Path $OUPath -ManagedBy $ManagedByUserObj
+        Write-Output "Group '$groupNameWrite' was created."
+    } else {
+        Write-Output "Group '$groupNameWrite' already exists."
+    }
+
+    # nastavení ACL
+    $acl = Get-Acl $_.FullName
+
+    # Read oprávnění
+    $accessRuleRead = New-Object System.Security.AccessControl.FileSystemAccessRule($groupExistsRead.SamAccountName,"Read","Allow")
+    $acl.AddAccessRule($accessRuleRead)
+
+    # Write oprávnění
+    $accessRuleWrite = New-Object System.Security.AccessControl.FileSystemAccessRule($groupExistsWrite.SamAccountName,"Write","Allow")
+    $acl.AddAccessRule($accessRuleWrite)
+
+    Set-Acl $_.FullName $acl
+}
